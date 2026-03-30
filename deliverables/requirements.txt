@@ -1,0 +1,51 @@
+# ============================================================
+# Drug-Drug Interaction Risk Classifier — Nigeria
+# requirements.txt
+# Python 3.11 | Google Colab Compatible
+# ============================================================
+
+# ── Dataset Access ───────────────────────────────────────────
+PyTDC==0.4.1                     # TWOSIDES DDI dataset (no Kaggle needed)
+
+# ── Data & Wrangling ─────────────────────────────────────────
+pandas>=2.1.0
+numpy>=1.26.0
+openpyxl>=3.1.0                  # Excel file support
+
+# ── Web Scraping & APIs ──────────────────────────────────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.1.0                      # Fast HTML/XML parser for BeautifulSoup
+urllib3>=2.0.0
+tqdm>=4.66.0                     # Progress bars
+
+# ── Machine Learning ─────────────────────────────────────────
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+imbalanced-learn>=0.12.0         # SMOTE oversampling
+joblib>=1.4.0                    # Model serialisation
+
+# ── Explainability ───────────────────────────────────────────
+shap>=0.45.0
+
+# ── Deep Learning ────────────────────────────────────────────
+tensorflow>=2.15.0               # Keras DNN
+torch>=2.2.0                     # PyTorch DNN
+
+# ── Visualisation ────────────────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.20.0
+
+# ── Streamlit App ────────────────────────────────────────────
+streamlit>=1.33.0
+
+# ── Statistical Analysis ─────────────────────────────────────
+scipy>=1.13.0
+
+# ── Notebook Utilities ───────────────────────────────────────
+ipykernel>=6.29.0
+python-dotenv>=1.0.0             # API key management
+
+# ── Optional: Cheminformatics ────────────────────────────────
+# rdkit>=2023.9.5                # Molecular descriptors from SMILES (uncomment if needed)
