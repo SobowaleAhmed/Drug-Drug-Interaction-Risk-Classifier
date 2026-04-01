@@ -1,0 +1,742 @@
+================================================================
+  DRUG-DRUG INTERACTION RISK CLASSIFIER — NIGERIA
+  Project Description, Glossary & Technical Explanation
+  Author: Ahmed | Version 1.0 | 2026
+================================================================
+
+This document explains the entire project in plain language —
+what every component does, why each decision was made, and
+what every abbreviation and technical term means.
+
+----------------------------------------------------------------
+SECTION 1: WHAT IS THIS PROJECT?
+----------------------------------------------------------------
+
+This project is a machine learning and deep learning system
+that predicts how dangerous it is to take two drugs at the same
+time. When a patient takes two or more medications together,
+the drugs can interact — sometimes harmlessly, sometimes with
+life-threatening consequences.
+
+The system is specifically designed for Nigeria, using the list
+of drugs officially registered and approved in Nigeria by the
+government agency called NAFDAC.
+
+The model looks at two drugs and outputs one of four risk levels:
+
+  Class 0 — NONE      : No known interaction. Safe to combine.
+  Class 1 — MILD      : Minor interaction. Monitor the patient.
+  Class 2 — MODERATE  : Significant interaction. May need dose
+                         adjustment or closer monitoring.
+  Class 3 — SEVERE    : Life-threatening. Avoid this combination.
+
+The final product is a web application where a doctor or
+pharmacist can type in two drug names and instantly see the
+predicted risk level, an explanation of why the interaction
+exists, and what every model in the pipeline predicts.
+
+----------------------------------------------------------------
+SECTION 2: WHY NIGERIA?
+----------------------------------------------------------------
+
+Nigeria has a unique disease burden that creates specific
+high-risk drug combination scenarios:
+
+1. TB-HIV CO-INFECTION
+   Nigeria has one of the highest rates of patients who have
+   both Tuberculosis (TB) and HIV at the same time. Treating
+   both requires taking anti-TB drugs AND antiretroviral (ARV)
+   drugs simultaneously. The TB drug Rifampicin is one of the
+   most powerful enzyme inducers known — it speeds up the
+   body's breakdown of ARV drugs so fast that the ARVs become
+   ineffective. This interaction is the centrepiece of this
+   project.
+
+2. POLYPHARMACY
+   Many Nigerian patients manage multiple chronic conditions —
+   hypertension, diabetes, HIV, and malaria — at the same time,
+   meaning they take many drugs simultaneously.
+
+3. LIMITED CLINICAL DECISION SUPPORT
+   Many Nigerian healthcare settings lack real-time tools that
+   flag dangerous drug combinations at the point of prescribing
+   or dispensing.
+
+4. NAFDAC REGISTRY
+   Nigeria has its own drug regulatory body (NAFDAC) with a
+   public database of approved drugs. Using this list makes the
+   project authentically Nigerian rather than just applying a
+   generic global tool.
+
+----------------------------------------------------------------
+SECTION 3: ABBREVIATIONS & WHAT THEY MEAN
+----------------------------------------------------------------
+
+--- ORGANISATIONS & DATABASES ---
+
+NAFDAC
+  National Agency for Food and Drug Administration and Control.
+  Nigeria's equivalent of the US FDA. They approve all drugs
+  sold in Nigeria. Their public Greenbook lists 6,432+ registered
+  products. We scraped this list to build our Nigerian drug
+  universe.
+
+FDA
+  Food and Drug Administration. The US government agency that
+  regulates drugs in the United States.
+
+FAERS
+  FDA Adverse Event Reporting System. A US database where
+  healthcare providers and patients report bad reactions to drugs.
+  The TWOSIDES dataset was built by mining FAERS for drug pairs
+  that caused adverse effects together.
+
+TWOSIDES
+  A scientific dataset created by Tatonetti et al. (2012) at
+  Columbia University. It contains 4.6 million drug-drug
+  interaction records, each one a pair of drugs and the adverse
+  side effect they caused together. We use this as our primary
+  source of labeled interaction data. Accessed via PyTDC.
+
+PyTDC
+  Python Therapeutics Data Commons. An open-source platform that
+  provides easy programmatic access to biomedical datasets
+  including TWOSIDES. Instead of downloading a CSV manually,
+  we load the data in 3 lines of code:
+    from tdc.multi_pred import DDI
+    data = DDI(name='TWOSIDES')
+    df   = data.get_data()
+
+OpenFDA
+  The public API (Application Programming Interface) provided by
+  the FDA. We use it to fetch official drug label information,
+  including interaction warnings written by drug manufacturers.
+
+PubChem
+  A free public database of chemical molecules maintained by the
+  US National Institutes of Health (NIH). We use their REST API
+  to fetch molecular descriptors for each drug (molecular weight,
+  LogP, TPSA, etc.).
+
+DrugBank
+  A comprehensive pharmaceutical database that contains detailed
+  drug information including which enzymes metabolise each drug.
+  We use a curated lookup table derived from DrugBank data.
+
+TDC
+  Therapeutics Data Commons. The research initiative behind
+  PyTDC, based at Harvard University.
+
+WHO
+  World Health Organisation. We reference their ATC
+  (Anatomical Therapeutic Chemical) classification system.
+
+ATC
+  Anatomical Therapeutic Chemical classification. The WHO's
+  system for categorising drugs by what part of the body they
+  act on and what they treat. Example: Rifampicin is ATC code
+  J04AB02 (J = antiinfective, 04 = antimycobacterials).
+  We use this to group drugs into therapeutic classes.
+
+--- CHEMISTRY & PHARMACOLOGY ---
+
+DDI
+  Drug-Drug Interaction. What happens in the body when two drugs
+  are taken together. DDIs can be:
+  - Pharmacokinetic (PK): one drug changes how the body
+    processes the other (absorption, metabolism, excretion)
+  - Pharmacodynamic (PD): both drugs act on the same biological
+    target, amplifying or cancelling each other's effects
+
+CYP
+  Cytochrome P450. A family of enzymes in the liver (and gut)
+  that metabolise (break down) most drugs. When one drug
+  inhibits or induces a CYP enzyme, it changes how fast another
+  drug is broken down, which changes how much of that drug
+  reaches the bloodstream.
+
+CYP3A4
+  The most important CYP enzyme — responsible for metabolising
+  approximately 50% of all drugs. Rifampicin is a powerful
+  CYP3A4 INDUCER (speeds up metabolism). Clarithromycin and
+  Ketoconazole are CYP3A4 INHIBITORS (slow down metabolism).
+
+CYP2C9
+  The second most important CYP enzyme. Warfarin is primarily
+  metabolised by CYP2C9. Any CYP2C9 inhibitor (Fluconazole,
+  Metronidazole, Ciprofloxacin) will increase Warfarin levels,
+  raising the risk of severe bleeding.
+
+CYP2D6
+  Important for metabolising many antidepressants, beta-blockers,
+  and opioids. Quinine inhibits CYP2D6.
+
+CYP2C19
+  Important for metabolising Omeprazole (proton pump inhibitor)
+  and some antiplatelet drugs.
+
+CYP1A2
+  Important for metabolising Clozapine and Theophylline.
+  Ciprofloxacin inhibits CYP1A2.
+
+Inhibitor
+  A drug that SLOWS DOWN a CYP enzyme. If Drug A inhibits CYP3A4
+  and Drug B is a CYP3A4 substrate, then Drug A causes Drug B
+  to build up to higher levels in the blood — potentially toxic.
+
+Inducer
+  A drug that SPEEDS UP a CYP enzyme. If Drug A induces CYP3A4
+  and Drug B is a CYP3A4 substrate, then Drug A causes Drug B
+  to be broken down faster, reducing its blood levels —
+  potentially making Drug B ineffective.
+  Rifampicin is the most clinically important inducer.
+
+Substrate
+  A drug that IS metabolised BY a CYP enzyme. If a drug is a
+  CYP3A4 substrate, its blood levels will be affected by any
+  CYP3A4 inhibitor or inducer the patient also takes.
+
+Narrow TI / Narrow Therapeutic Index
+  TI = Therapeutic Index. A drug with a narrow TI has a very
+  small difference between the dose that is effective and the
+  dose that is toxic. Even small changes in blood levels of
+  these drugs can cause serious harm. Examples: Warfarin,
+  Phenytoin, Digoxin, Lithium, Gentamicin.
+  We flag these because any interaction involving a narrow TI
+  drug is automatically higher risk.
+
+Protein Binding
+  The percentage of a drug in the bloodstream that is bound to
+  proteins (mainly albumin) rather than free to act on target
+  tissues. Only the free (unbound) fraction is pharmacologically
+  active. Two highly protein-bound drugs can compete for the
+  same binding sites, displacing each other and raising the free
+  (active) concentration of one or both drugs.
+
+Half-life
+  The time it takes for half the drug to be eliminated from the
+  body. Drugs with very long half-lives (e.g. Chloroquine:
+  720 hours, Amiodarone: weeks) accumulate in the body and
+  their interactions persist much longer.
+
+Polypharmacy
+  Taking multiple medications simultaneously. More drugs = more
+  possible pairwise combinations = higher DDI risk.
+
+ARV / Antiretrovirals
+  Drugs used to treat HIV. They work by targeting different
+  stages of the HIV replication cycle. Common ARVs used in
+  Nigeria: Efavirenz, Nevirapine, Lamivudine, Tenofovir,
+  Dolutegravir, Lopinavir/Ritonavir.
+
+ACT
+  Artemisinin-based Combination Therapy. The WHO-recommended
+  first-line treatment for malaria. The most common ACT in
+  Nigeria is Artemether-Lumefantrine (also called Coartem).
+
+QT Prolongation
+  The QT interval is a measurement of electrical activity in
+  the heart. Drugs that prolong the QT interval can cause a
+  dangerous heart rhythm disorder (Torsades de Pointes) which
+  can lead to sudden cardiac death. Some antimalarials
+  (Quinine, Mefloquine) and some antibiotics (Azithromycin,
+  Moxifloxacin) prolong QT, so combining them is dangerous.
+
+--- MOLECULAR DESCRIPTORS ---
+
+MW / Molecular Weight
+  The mass of one molecule of a drug, measured in grams per
+  mole (g/mol). Larger molecules tend to have more complex
+  binding profiles and may interact more broadly.
+
+LogP / XLogP
+  The logarithm of a drug's partition coefficient — a measure
+  of how fat-soluble (lipophilic) vs water-soluble (hydrophilic)
+  a drug is. High LogP = more fat-soluble = better membrane
+  penetration but also higher risk of accumulating in tissues.
+
+TPSA
+  Topological Polar Surface Area. A measure of the total surface
+  area of a molecule contributed by polar atoms (oxygen, nitrogen).
+  Low TPSA = better absorption across cell membranes.
+  Units: Angstroms squared (Å²).
+
+H-bond Donors
+  The number of hydrogen bond donors (NH, OH groups) in the
+  molecule. Affects how the drug interacts with proteins and
+  how well it crosses membranes.
+
+H-bond Acceptors
+  The number of hydrogen bond acceptors (N, O atoms) in the
+  molecule. Together with H-bond donors, this affects
+  solubility and membrane permeability.
+
+SMILES
+  Simplified Molecular Input Line Entry System. A text string
+  that encodes a molecular structure. Example: aspirin is
+  CC(=O)Oc1ccccc1C(=O)O. TWOSIDES stores drugs as SMILES
+  strings; we convert these to feature vectors via DrugBank
+  ID mapping and PubChem lookups.
+
+--- MACHINE LEARNING ---
+
+ML
+  Machine Learning. The branch of AI where algorithms learn
+  patterns from data rather than following explicit rules.
+
+DL
+  Deep Learning. A subset of ML using neural networks with
+  many layers. Can automatically learn complex non-linear
+  relationships in the data.
+
+Feature / Feature Vector
+  A numerical representation of an input that the model uses
+  to make predictions. Each row in our dataset is a feature
+  vector with 31 numbers representing one drug pair.
+
+Feature Engineering
+  The process of designing the input features for a model.
+  Good feature engineering often matters more than model choice.
+  Our features include both raw data (molecular weight) and
+  synthesised signals (metabolic_conflict flag).
+
+Target / Label
+  The value the model is trying to predict. Our target is the
+  severity class (0, 1, 2, or 3).
+
+LR
+  Logistic Regression. A simple linear classification model.
+  Used as our baseline — the simplest possible model whose
+  performance all other models must beat.
+
+RF
+  Random Forest. An ensemble of decision trees. Each tree
+  is trained on a random subset of data and features. The
+  final prediction is a majority vote across all trees.
+  Good at capturing non-linear patterns.
+
+XGBoost
+  eXtreme Gradient Boosting. A gradient boosting algorithm that
+  builds trees sequentially, where each new tree corrects the
+  errors of the previous ones. Generally the best-performing
+  model on tabular (structured) data.
+
+DNN
+  Deep Neural Network. A neural network with multiple hidden
+  layers. Our DNN has 3 hidden layers:
+  Input(31) → 256 → 128 → 64 → Output(4 classes)
+
+SMOTE
+  Synthetic Minority Oversampling TEchnique. A method to handle
+  class imbalance by creating new synthetic training examples
+  of the minority class. We use SMOTE because severe DDIs are
+  rare — without it, the model would just predict "None" for
+  everything and get a decent accuracy but miss all the
+  dangerous interactions that matter.
+
+GridSearchCV
+  Grid Search with Cross-Validation. A systematic way to find
+  the best hyperparameters for a model by training it with every
+  combination from a grid of parameter values, then selecting
+  the combination that scores best on cross-validation.
+
+StratifiedKFold
+  A cross-validation method that splits data into K folds
+  (groups) while ensuring each fold has the same proportion
+  of each class as the full dataset. Prevents a fold from
+  accidentally having no Severe examples.
+
+CV
+  Cross-Validation. A method of evaluating model performance
+  by splitting the training data into multiple folds, training
+  on some and evaluating on others, then averaging the scores.
+  We use 5-fold CV: mean ± std F1.
+
+SHAP
+  SHapley Additive exPlanations. A mathematical framework
+  (based on game theory) that explains individual model
+  predictions by computing how much each feature contributed
+  to that specific prediction. Tells us not just what the
+  model predicted but WHY.
+  - Beeswarm plot: shows feature importance across all samples
+  - Dot plot: shows direction of impact per class
+  - Waterfall plot: explains one single prediction step by step
+
+--- DEEP LEARNING SPECIFIC ---
+
+BatchNorm / Batch Normalisation
+  A technique that normalises the activations within each
+  mini-batch during training. This stabilises training,
+  allows higher learning rates, and acts as a mild regulariser.
+  Critical for deep networks — without it, activations can
+  explode or vanish across layers.
+
+Dropout
+  A regularisation technique where during training, a random
+  fraction of neurons is "dropped" (set to zero) at each step.
+  This prevents the network from over-relying on any one
+  neuron (overfitting) and forces it to learn redundant
+  representations.
+  - Block 1: Dropout(0.30) — drops 30% of neurons
+  - Block 2: Dropout(0.25) — drops 25% of neurons
+  - Block 3: Dropout(0.20) — drops 20% of neurons
+  Decreasing dropout through the network is intentional —
+  later layers learn more specific features that are harder
+  to relearn.
+
+ReLU
+  Rectified Linear Unit. The activation function f(x) = max(0,x).
+  Used after each dense layer to introduce non-linearity —
+  without it, stacking linear layers would still just be a
+  linear model regardless of depth.
+
+Softmax
+  An activation function applied to the output layer that
+  converts raw scores (logits) into probabilities that sum to 1.
+  Example: [logit_None, logit_Mild, logit_Moderate, logit_Severe]
+  → [0.60, 0.25, 0.10, 0.05] (sums to 1.0).
+
+Adam
+  Adaptive Moment Estimation. The most widely used optimiser
+  in deep learning. It adapts the learning rate for each
+  parameter individually using estimates of first and second
+  moments of the gradients. Generally converges faster and
+  more reliably than plain SGD.
+
+Learning Rate (lr)
+  Controls how big a step the optimiser takes in the direction
+  of the gradient at each update. Too high = unstable training.
+  Too low = very slow convergence. We start at 1e-3 (0.001).
+
+ReduceLROnPlateau
+  A Keras callback that automatically reduces the learning rate
+  when validation loss stops improving. Factor=0.5 means the
+  LR is halved. Patience=7 means it waits 7 epochs of no
+  improvement before reducing. This helps escape local minima.
+
+EarlyStopping
+  A Keras callback that stops training when validation loss
+  stops improving, then restores the weights from the best
+  epoch. Patience=15 means training continues for 15 more
+  epochs after the last improvement before stopping.
+  Prevents overfitting and saves training time.
+
+ModelCheckpoint
+  A Keras callback that saves the model weights to disk every
+  time a new best validation loss is achieved.
+
+StepLR
+  A PyTorch learning rate scheduler that reduces the LR by a
+  fixed factor (gamma=0.5) every N epochs (step_size=20).
+  Our schedule: lr halves at epoch 20, 40, 60, 80...
+
+He Initialisation / Kaiming Normal
+  A weight initialisation strategy designed specifically for
+  ReLU networks. Sets initial weights from a normal distribution
+  scaled by sqrt(2/n_inputs). Prevents gradients from vanishing
+  or exploding at the start of training.
+
+Logits
+  Raw unnormalised output scores from the final linear layer,
+  before the softmax activation. PyTorch's CrossEntropyLoss
+  expects logits (not probabilities) for numerical stability.
+
+CrossEntropyLoss
+  The standard loss function for multi-class classification.
+  Measures how different the predicted probability distribution
+  is from the true one-hot label distribution. Lower is better.
+  PyTorch handles the softmax internally when computing this loss.
+
+sparse_categorical_crossentropy
+  Keras's name for categorical cross-entropy loss when labels
+  are integers (0, 1, 2, 3) rather than one-hot encoded arrays.
+
+--- EVALUATION METRICS ---
+
+Macro F1 Score
+  F1 Score averaged across all 4 classes, giving equal weight
+  to each class regardless of how many samples it has. This is
+  the primary metric because it ensures the rare Severe class
+  is treated as important as the common None class.
+
+F1 Score (per class)
+  The harmonic mean of Precision and Recall for one class.
+  F1 = 2 * (Precision * Recall) / (Precision + Recall)
+  A value of 1.0 is perfect. 0.0 is worst.
+
+Precision
+  Of all predictions for class X, what fraction were actually
+  class X? High precision = few false alarms.
+
+Recall
+  Of all actual class X examples, what fraction did the model
+  correctly identify? High recall = few missed cases.
+  For clinical use, high recall on Severe is critical — missing
+  a severe interaction is more dangerous than a false alarm.
+
+ROC-AUC
+  Receiver Operating Characteristic — Area Under Curve.
+  Measures the model's ability to rank positive examples above
+  negative ones. AUC of 1.0 = perfect. 0.5 = random.
+  We use One-vs-Rest (OvR) — one ROC curve per severity class.
+
+OvR
+  One-vs-Rest. A strategy for applying binary classification
+  metrics (like ROC-AUC) to multi-class problems. For each
+  class, we treat it as positive and all other classes as
+  negative, then compute the metric.
+
+PR Curve
+  Precision-Recall Curve. Plots precision vs recall as the
+  classification threshold changes. More informative than ROC
+  for imbalanced datasets because it focuses on the positive
+  class performance.
+
+AP
+  Average Precision. The area under the Precision-Recall curve.
+  Summarises the PR curve into a single number. Higher = better.
+
+Confusion Matrix
+  A 4×4 table showing, for each true class, how many samples
+  were predicted as each class. The diagonal = correct
+  predictions. Off-diagonal = errors. A well-performing model
+  has large diagonal values and small off-diagonal values.
+
+--- PREPROCESSING ---
+
+Imputation
+  The process of filling in missing values. We use median
+  imputation: missing values are replaced with the median value
+  of that feature computed from the training set. Used before
+  ML models and DNNs which cannot handle NaN values.
+
+StandardScaler
+  Scales each feature to have mean=0 and standard deviation=1.
+  Critical for Logistic Regression and DNNs (but not tree-based
+  models which are scale-invariant). Prevents features with
+  large numeric ranges (like molecular weight ~400) from
+  dominating features with small ranges (like binary flags 0/1).
+
+Train/Test Split
+  Dividing the dataset into a training set (used to fit the
+  model) and a test set (used only once at the end to evaluate
+  final performance). We use 80% train, 20% test with
+  stratification to preserve class proportions.
+
+Stratified Split
+  A split that ensures each class is represented in the same
+  proportion in both train and test sets. Prevents the test
+  set from having zero Severe examples by chance.
+
+--- DEPLOYMENT ---
+
+Streamlit
+  An open-source Python library for building interactive web
+  applications from Python scripts. Requires no HTML, CSS, or
+  JavaScript knowledge. We use it to build the DDI Risk Checker
+  web app.
+
+st.cache_resource
+  A Streamlit decorator that caches the result of a function
+  call (like loading models) so it only runs once when the app
+  starts, not on every user interaction.
+
+st.cache_data
+  A Streamlit decorator that caches the result of data-loading
+  functions. We use it on PubChem API calls so the same drug's
+  molecular data is fetched once and reused.
+
+API
+  Application Programming Interface. A way for software systems
+  to communicate with each other. We use REST APIs (REpresentational
+  State Transfer) for OpenFDA and PubChem — we send an HTTP
+  request with a drug name and get back JSON data.
+
+JSON
+  JavaScript Object Notation. A lightweight text format for
+  structured data. API responses come back as JSON which we
+  parse into Python dictionaries and DataFrames.
+
+pkl / .pkl
+  Pickle format. Python's built-in serialisation format for
+  saving Python objects (including trained models) to disk.
+  We save scikit-learn and XGBoost models as .pkl files.
+
+.h5
+  HDF5 format. Keras saves model weights and architecture in
+  this hierarchical data format. Can be loaded back with
+  keras.models.load_model().
+
+.pt
+  PyTorch's format for saving tensors and model state
+  dictionaries using torch.save(). We save both the model
+  state dict (weights only) and a full checkpoint dict
+  (weights + metadata like best epoch and feature columns).
+
+--- REPOSITORY & WORKFLOW ---
+
+Google Colab
+  A free cloud-based Jupyter Notebook environment provided by
+  Google that includes free GPU access. All notebooks are
+  designed to run in Colab.
+
+Google Drive
+  Cloud storage we use as a persistent file system across Colab
+  sessions. Data files, models, and results are saved to Drive
+  so they persist when Colab sessions time out.
+
+os.walk()
+  A Python function that recursively traverses a directory tree.
+  We use it in every notebook to automatically find files
+  anywhere in the user's Drive without requiring them to
+  specify exact folder paths.
+
+joblib
+  A Python library for efficient serialisation (saving) of
+  large numpy arrays and scikit-learn objects. Faster than
+  pickle for models containing large arrays.
+
+----------------------------------------------------------------
+SECTION 4: THE FULL PIPELINE EXPLAINED STEP BY STEP
+----------------------------------------------------------------
+
+STEP 0 — NAFDAC SCRAPER (00_nafdac_scraper.ipynb)
+  We scrape https://greenbook.nafdac.gov.ng/ingredients across
+  45 pages of HTML. Each page lists ~50 drug ingredients with
+  their NAFDAC registration IDs. BeautifulSoup extracts the
+  ingredient name and ID from each link. Combination products
+  (e.g. "Abacavir; Lamivudine; Efavirenz") are split into
+  individual generic names. Result: two CSV files saved to Drive.
+
+STEP 1 — DATA LOADING & EDA (01_eda.ipynb)
+  Loads the NAFDAC CSVs and TWOSIDES via PyTDC. Maps DrugBank
+  IDs to generic names using a lookup table. Filters TWOSIDES
+  to only Nigerian drug pairs. Seeds in 50 curated high-priority
+  DDI pairs (e.g. Rifampicin + Efavirenz = Severe). Fetches
+  molecular descriptors from PubChem for every active drug.
+  Builds a 31-feature vector for every drug pair.
+  Produces 7 EDA charts: severity distribution, drug class
+  analysis, most dangerous pairs, CYP enzyme heatmap, molecular
+  property boxplots, correlation heatmap, disease area profile.
+  Saves ddi_nigeria_features.csv to Drive.
+
+STEP 2 — MACHINE LEARNING (02_ml_models.ipynb)
+  Loads ddi_nigeria_features.csv. Imputes missing values
+  (median). Applies SMOTE to training data only. Scales features.
+  Trains Logistic Regression, Random Forest, XGBoost (with
+  GridSearchCV). Produces full validation suite: ROC curves,
+  PR curves, confusion matrices, 5-fold CV, per-class F1.
+  Generates SHAP beeswarm, dot plot, and waterfall explanation.
+  Saves all models, scaler, imputer, leaderboard to Drive.
+
+STEP 3 — DEEP LEARNING (03_lstm_notebook.ipynb)
+  Same preprocessing as Step 2. Builds and trains Keras DNN:
+  3 dense blocks with BatchNorm + Dropout, compiled with Adam,
+  trained with EarlyStopping + ReduceLROnPlateau. Rebuilds the
+  exact same architecture in PyTorch with a custom training loop,
+  manual early stopping, and StepLR scheduler. Compares both
+  frameworks head-to-head. Combines results with ML leaderboard
+  to produce final 5-model leaderboard. Saves all to Drive.
+
+STEP 4 — STREAMLIT APP (streamlit_app.py)
+  Loads all saved models from disk. User selects two drugs from
+  a dropdown of NAFDAC-registered drugs. App fetches live
+  molecular data from PubChem, builds the feature vector, and
+  runs all 5 models. Displays colour-coded severity badge,
+  confidence score, probability bar chart, drug property cards,
+  mechanism flags (plain-language CYP explanations), and a
+  full model comparison table. Three tabs: Risk Checker,
+  Model Performance (leaderboard + training curves), and
+  About the Model (feature table, limitations).
+
+----------------------------------------------------------------
+SECTION 5: KEY DRUG INTERACTION EXAMPLES
+----------------------------------------------------------------
+
+Rifampicin + Efavirenz (Severe risk in Nigeria)
+  Mechanism: Rifampicin induces CYP3A4 → speeds up Efavirenz
+  metabolism → Efavirenz blood levels drop by ~26–71% →
+  HIV treatment fails → risk of drug resistance development.
+  This is the most critical DDI in Nigeria's TB-HIV context.
+
+Fluconazole + Warfarin (Severe)
+  Mechanism: Fluconazole inhibits CYP2C9 → Warfarin cannot be
+  broken down → Warfarin levels rise dangerously → risk of
+  severe internal bleeding (haemorrhage).
+
+Verapamil + Atenolol (Severe)
+  Mechanism: Both drugs slow the heart. Combined, they can
+  cause life-threatening AV block (the electrical conduction
+  between heart chambers stops). This is a pharmacodynamic
+  interaction — not CYP-related.
+
+Metronidazole + Warfarin (Severe)
+  Mechanism: Metronidazole inhibits CYP2C9 AND directly
+  potentiates Warfarin's anticoagulant effect. Very commonly
+  co-prescribed (infections are common in Warfarin patients)
+  making this a high-frequency dangerous DDI.
+
+Artemether-Lumefantrine (No interaction — Class 0)
+  These two drugs ARE the ACT combination therapy for malaria.
+  Taking them together is the intended treatment — the system
+  correctly classifies this as no interaction risk.
+
+----------------------------------------------------------------
+SECTION 6: PROJECT FILE INDEX
+----------------------------------------------------------------
+
+00_nafdac_scraper.ipynb
+  What it does: Scrapes NAFDAC Greenbook website to get all
+  drug names registered in Nigeria. Saves two CSV files.
+  Run this FIRST.
+
+01_eda.ipynb
+  What it does: Loads all data sources, builds the feature
+  dataset, and generates 7 exploratory charts. The main data
+  engineering notebook.
+  Input:  nafdac_ingredients.csv, nafdac_individual_drugs.csv
+  Output: ddi_nigeria_features.csv
+
+02_ml_models.ipynb
+  What it does: Trains three classical machine learning models
+  with full hyperparameter tuning, validation, and SHAP
+  explanations.
+  Input:  ddi_nigeria_features.csv
+  Output: models/*.pkl, ml_leaderboard.csv
+
+03_lstm_notebook.ipynb
+  What it does: Trains two deep learning models (Keras DNN and
+  PyTorch DNN) with the same architecture for comparison.
+  Input:  ddi_nigeria_features.csv
+  Output: models/*.h5, models/*.pt, final_leaderboard.csv
+
+streamlit_app.py
+  What it does: The interactive web application. Loads all
+  trained models and provides a live DDI risk checker.
+  Input:  models/ folder
+  Output: Interactive web app
+
+README.md
+  What it does: The main project documentation for GitHub.
+  Explains the project, how to run it, and links to all
+  components.
+
+ABOUT_MODEL.md
+  What it does: The model card — detailed technical
+  documentation of the model's design, data, features,
+  architecture, metrics, and limitations.
+
+requirements.txt
+  What it does: Lists every Python package the project needs
+  and the minimum version required. Install with:
+    pip install -r requirements.txt
+
+DESCRIPTION.txt
+  What it does: This file. Plain-language explanation of the
+  entire project including all abbreviations and terminology.
+
+----------------------------------------------------------------
+  END OF DESCRIPTION
+  Drug-Drug Interaction Risk Classifier — Nigeria
+  Author: Ahmed | 2026
+----------------------------------------------------------------
